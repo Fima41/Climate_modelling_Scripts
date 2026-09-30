@@ -1,0 +1,16 @@
+# Downloaded datasets (re-created by the scripts)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Notebooks & editors
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
