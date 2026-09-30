@@ -8,12 +8,12 @@ produces publication-style figures along with a plain-English summary.
 
 ## Analyses
 
-| # | Analysis | Data | Status |
-|---|---|---|---|
-| 1 | [Temperature trends](#1-temperature-trends) | NASA GISTEMP v4 | ✅ Done |
-| 2 | [Extreme weather events: Lusaka District, Zambia](#2-extreme-weather-events--lusaka-district-zambia) | ERA5 reanalysis | ✅ Done |
-| 3 | Drought analysis (SPI) | CHIRPS | Planned |
-| 4 | CMIP6 future projections | CMIP6 | Planned |
+| # | Analysis | Data |
+|---|---|---|
+| 1 | [Temperature trends](#1-temperature-trends) | NASA GISTEMP v4 |
+| 2 | [Extreme weather events: Lusaka District, Zambia](#2-extreme-weather-events--lusaka-district-zambia) | ERA5 reanalysis |
+| 3 | Drought analysis (SPI) | CHIRPS |
+| 4 | CMIP6 future projections | CMIP6 |
 
 ---
 
