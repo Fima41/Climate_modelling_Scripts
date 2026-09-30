@@ -42,6 +42,35 @@ class Breakpoint:
         return self.slope_after / self.slope_before
 
 
+@dataclass(frozen=True)
+class SenTrend:
+    start: int
+    end: int
+    slope_per_decade: float
+    ci95_low: float
+    ci95_high: float
+    p_value: float
+
+    @property
+    def significant(self) -> bool:
+        return self.p_value < 0.05
+
+
+def sen_trend(series: pd.Series) -> SenTrend:
+    """Theil-Sen slope with a Mann-Kendall significance test.
+
+    Both are rank-based, so they are robust to outliers and skewed data. That
+    makes them the standard choice for trends in counts of extreme events.
+    """
+    s = series.dropna()
+    x = s.index.to_numpy(float)
+    y = s.to_numpy(float)
+    slope, _, low, high = stats.theilslopes(y, x, alpha=0.95)
+    p_value = stats.kendalltau(x, y).pvalue
+    return SenTrend(start=int(x[0]), end=int(x[-1]), slope_per_decade=slope * 10,
+                    ci95_low=low * 10, ci95_high=high * 10, p_value=float(p_value))
+
+
 def linear_trend(series: pd.Series, start: int | None = None,
                  end: int | None = None) -> Trend:
     """Ordinary least-squares trend with a 95% confidence interval."""
