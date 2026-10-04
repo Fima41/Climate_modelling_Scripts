@@ -93,55 +93,77 @@ def load(country: terrain.Country, data_dir: Path, refresh: bool):
     return boundary, grid, elevation, mask
 
 
-def render_poster(country, boundary, grid, elevation, mask, stats, data_dir, refresh, path: Path,
-                  size: int, samples: int) -> Path:
-    width, height = terrain_plots.map_size(size)
-    elev = terrain.block_mean(elevation, RENDER_FACTOR)
-    valid = terrain.block_mean(mask.astype(np.float32), RENDER_FACTOR) > 0.5
-    base = stats["min"] - 250.0
-    heights = render3d.heights_to_units(np.where(valid, elev, base) - base,
-                                        RESOLUTION * RENDER_FACTOR, EXAGGERATION)
+class TerrainScene:
+    """The country's terrain as a fixed 3D scene that any surface colouring can be draped over.
 
-    camera = render3d.Camera(heights.shape, width, height, tilt_deg=48.0,
-                             target_y=float(heights[valid].mean()))
-    rows, cols = np.nonzero(valid)
-    pick = slice(None, None, max(1, len(rows) // 20000))
-    outline = camera.world(rows[pick] + 0.5, cols[pick] + 0.5, heights[rows[pick], cols[pick]])
-    camera = render3d.fit_camera(camera, outline, fill_x=0.84, fill_y=0.92, centre_y=0.49)
-    heights, valid, colours, camera, (pad_r, pad_c) = render3d.pad_to_frame(
-        heights, valid, terrain.hypsometric_rgb(elev), camera)
-    drawn, colours = render3d.wall_ring(valid, colours)
+    Heights, camera and padding are prepared once; ``render`` then path-traces the
+    terrain with a colour field defined on the analysis grid, and ``project`` maps
+    lon/lat points onto the image for overlays.
+    """
 
-    started = time.perf_counter()
-    rgb = render3d.render(heights, colours, drawn, camera, samples=samples)
-    print(f"Rendered {width}x{height} from a {heights.shape[1]}x{heights.shape[0]} heightmap "
-          f"in {time.perf_counter() - started:.0f} s")
-    alpha = terrain_plots.premultiplied_alpha(rgb, render3d.coverage(rgb))
-    rgb = render3d.grade(rgb)
+    def __init__(self, country, grid, elevation, mask, width: int, height: int,
+                 factor: int = RENDER_FACTOR, tilt_deg: float = 48.0, fill_x: float = 0.84,
+                 fill_y: float = 0.92, centre_y: float = 0.49):
+        from scipy.ndimage import binary_dilation, grey_dilation
 
-    # Border rivers in Natural Earth run up to a few km outside the country edge and
-    # would slide down the slab walls, so drape water and labels on the highest
-    # terrain within three cells and drop river sections further out than that.
-    from scipy.ndimage import binary_dilation, grey_dilation
-    surface = grey_dilation(heights, size=7)
-    near = binary_dilation(valid, iterations=3)
+        self.country, self.grid, self.factor = country, grid, factor
+        elev = terrain.block_mean(elevation, factor)
+        valid = terrain.block_mean(mask.astype(np.float32), factor) > 0.5
+        base = float(elev[valid].min()) - 250.0
+        heights = render3d.heights_to_units(np.where(valid, elev, base) - base,
+                                            RESOLUTION * factor, EXAGGERATION)
+        camera = render3d.Camera(heights.shape, width, height, tilt_deg=tilt_deg,
+                                 target_y=float(heights[valid].mean()))
+        rows, cols = np.nonzero(valid)
+        pick = slice(None, None, max(1, len(rows) // 20000))
+        outline = camera.world(rows[pick] + 0.5, cols[pick] + 0.5, heights[rows[pick], cols[pick]])
+        camera = render3d.fit_camera(camera, outline, fill_x=fill_x, fill_y=fill_y, centre_y=centre_y)
+        self.heights, self.valid, _, self.camera, self.pads = render3d.pad_to_frame(
+            heights, valid, np.zeros((*heights.shape, 3)), camera)
+        # Border rivers in Natural Earth run up to a few km outside the country edge and
+        # would slide down the slab walls, so overlays are draped on the highest terrain
+        # within three cells and river sections further out than that are dropped.
+        self.surface = grey_dilation(self.heights, size=7)
+        self.near = binary_dilation(self.valid, iterations=3)
 
-    def to_render_grid(lon, lat):
-        row, col = grid.to_pixel(*terrain.project_lonlat(country, lon, lat))
-        return row / RENDER_FACTOR + pad_r, col / RENDER_FACTOR + pad_c
+    def render(self, colours: np.ndarray, samples: int = 64) -> tuple[np.ndarray, np.ndarray]:
+        """Path-trace with ``colours`` (sRGB 0..1 on the analysis grid); returns (rgb, alpha)."""
+        small = terrain.block_mean(colours, self.factor)
+        pr, pc = self.pads
+        small = np.pad(small, ((pr, pr), (pc, pc), (0, 0)))
+        drawn, small = render3d.wall_ring(self.valid, small)
+        started = time.perf_counter()
+        rgb = render3d.render(self.heights, small, drawn, self.camera, samples=samples)
+        print(f"Rendered {self.camera.width}x{self.camera.height} from a "
+              f"{self.heights.shape[1]}x{self.heights.shape[0]} heightmap in {time.perf_counter() - started:.0f} s")
+        alpha = terrain_plots.premultiplied_alpha(rgb, render3d.coverage(rgb))
+        return render3d.grade(rgb), alpha
 
-    def near_runs(coords):
-        row, col = to_render_grid(coords[:, 0], coords[:, 1])
-        r = np.clip(row.astype(int), 0, near.shape[0] - 1)
-        c = np.clip(col.astype(int), 0, near.shape[1] - 1)
-        keep = near[r, c]
+    def to_render_grid(self, lon, lat):
+        row, col = self.grid.to_pixel(*terrain.project_lonlat(self.country, lon, lat))
+        return row / self.factor + self.pads[0], col / self.factor + self.pads[1]
+
+    def near_runs(self, coords: np.ndarray) -> list[np.ndarray]:
+        """Split a lon/lat polyline into the runs that lie on or next to the country."""
+        row, col = self.to_render_grid(coords[:, 0], coords[:, 1])
+        r = np.clip(row.astype(int), 0, self.near.shape[0] - 1)
+        c = np.clip(col.astype(int), 0, self.near.shape[1] - 1)
+        keep = self.near[r, c]
         edges = np.flatnonzero(np.diff(np.r_[0, keep.astype(int), 0]))
         return [coords[a:b] for a, b in zip(edges[::2], edges[1::2]) if b - a > 1]
 
-    def project(lon, lat, on_terrain=True):
-        row, col = to_render_grid(lon, lat)
-        h = terrain.bilinear(surface, row, col) if on_terrain else np.zeros_like(row)
-        return camera.project(camera.world(row, col, h))
+    def project(self, lon, lat, on_terrain: bool = True) -> np.ndarray:
+        row, col = self.to_render_grid(lon, lat)
+        h = terrain.bilinear(self.surface, row, col) if on_terrain else np.zeros_like(row)
+        return self.camera.project(self.camera.world(row, col, h))
+
+
+def render_poster(country, boundary, grid, elevation, mask, stats, data_dir, refresh, path: Path,
+                  size: int, samples: int) -> Path:
+    width, height = terrain_plots.map_size(size)
+    scene = TerrainScene(country, grid, elevation, mask, width, height)
+    rgb, alpha = scene.render(terrain.hypsometric_rgb(elevation), samples)
+    project, near_runs = scene.project, scene.near_runs
 
     rivers = terrain.features_in_bbox(
         terrain.download_natural_earth("ne_10m_rivers_lake_centerlines", data_dir, refresh), country.bbox)

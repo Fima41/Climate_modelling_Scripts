@@ -13,8 +13,9 @@ produces publication-style figures along with a plain-English summary.
 | 1 | [Temperature trends](#1-temperature-trends) | NASA GISTEMP v4 |
 | 2 | [Extreme weather events: Lusaka District, Zambia](#2-extreme-weather-events--lusaka-district-zambia) | ERA5 reanalysis |
 | 3 | [Zambia in 3D: the shape of the plateau](#3-zambia-in-3d--the-shape-of-the-plateau) | SRTM terrain (Terrain Tiles on AWS) |
-| 4 | Drought analysis (SPI) | CHIRPS |
-| 5 | CMIP6 future projections | CMIP6 |
+| 4 | [El Niño and Zambia's rainy season](#4-el-niño-and-zambias-rainy-season) | ERA5 monthly reanalysis |
+| 5 | Drought analysis (SPI) | CHIRPS |
+| 6 | CMIP6 future projections | CMIP6 |
 
 ---
 
@@ -134,6 +135,51 @@ Use `--no-render` to compute the statistics and charts without it.
 
 ---
 
+## 4. El Niño and Zambia's rainy season
+
+**Question:** What happens to rainfall and temperature in Zambia's October–March rainy season during El Niño?
+
+Five El Niño seasons are compared with the 1991–2020 normal using ERA5 monthly data (0.25°, about 28 km),
+and the anomalies are draped over the 3D terrain from analysis 3.
+
+![El Niño seasons in 3D](outputs/elnino/figures/elnino_seasons_3d.png)
+
+### Key findings
+
+- **El Niño mainly dries the south.** All five El Niño seasons were drier than normal south of 13.5° S, by 19% on
+  average, while the north averaged +3%.
+- **2023/24 was the driest rainy season on record in southern Zambia (−44%)** and the hottest across the country
+  (+1.45 °C), ranked first of 35 seasons for both.
+- **The shortfall concentrates in February**, when maize fills its grain: February was 119 mm below normal in
+  1991/92 and 109 mm below in 2023/24, about half of each season's total deficit.
+- **Not every El Niño brings drought, and not every drought is El Niño.** In 1997/98 the north was 23% wetter than
+  normal, and three of the five driest southern seasons (1994/95, 2004/05, 2018/19) were not El Niño years.
+- **Recent El Niños are hotter:** 2015/16 (+0.79 °C) and 2023/24 (+1.45 °C) against roughly normal temperatures in
+  1982/83, 1991/92 and 1997/98.
+
+Full report with tables: [El Niño summary](outputs/elnino/summary.md)
+
+![Month by month](outputs/elnino/figures/monthly_anomalies.png)
+![Southern Zambia rainfall record](outputs/elnino/figures/southern_rainfall_record.png)
+
+### Methods
+
+| Step | Method |
+|---|---|
+| Seasons | October–March. Rainfall is the sum of monthly totals; temperature is the day-weighted mean |
+| Normal | Mean of the 30 seasons 1991/92–2020/21 |
+| Anomalies | Rainfall as % of normal (season maps) or mm (monthly table); temperature in °C |
+| Area averages | Each 0.25° cell weighted by the share inside Zambia and by cos(latitude); ratios taken after averaging |
+| El Niño seasons | 1982/83, 1991/92, 1997/98, 2015/16, 2023/24, with peak Oceanic Niño Index from NOAA CPC |
+| Maps | Anomalies resampled to the 600 m terrain grid, grouped into classes and path-traced over the terrain |
+
+**Data download.** In the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-monthly-means),
+choose *ERA5 monthly averaged data on single levels*: product type *Monthly averaged reanalysis*, variables
+*2m temperature* and *Total precipitation*, years 1982–1983 and 1990–2024, all months, time 00:00,
+sub-region North −8, West 22, South −18, East 34, format GRIB. Save it as `data/era5_monthly_zambia.grib`.
+
+---
+
 ## Getting started
 
 ```bash
@@ -147,6 +193,7 @@ python -m climate_analysis.temperature_trends --dataset all --refresh   # all re
 python -m climate_analysis.extreme_events --district lusaka
 python -m climate_analysis.terrain_3d --country zambia                # 3D poster, about 1 minute on a laptop GPU
 python -m climate_analysis.terrain_3d --country zambia --no-render    # statistics and charts only
+python -m climate_analysis.elnino_seasons                              # needs the ERA5 GRIB, see analysis 4
 
 # Run the tests
 python -m pytest
@@ -169,7 +216,10 @@ climate_analysis/
 ├── terrain.py              # Download and reproject elevation, borders, rivers and lakes
 ├── render3d.py             # forge3d camera, projection and path-traced rendering
 ├── terrain_plots.py        # 3D poster composition and terrain charts
-└── terrain_3d.py           # Analysis 3: Zambia in 3D
+├── terrain_3d.py           # Analysis 3: Zambia in 3D
+├── era5_monthly.py         # Read ERA5 monthly GRIB; seasonal totals, normals, anomalies
+├── elnino_plots.py         # 3D small multiples and El Niño charts
+└── elnino_seasons.py       # Analysis 4: El Niño and the rainy season
 tests/                      # Unit tests on synthetic data with known answers
 outputs/<region>/           # Generated figures and summary.md
 ```
@@ -189,6 +239,10 @@ All data are free and publicly available.
 - Runfola, D. et al. (2020): *geoBoundaries: A global database of political administrative boundaries.*
   PLoS ONE 15(4). https://www.geoboundaries.org (CC BY 4.0)
 - Natural Earth: free vector and raster map data. https://www.naturalearthdata.com (public domain)
+- Hersbach, H. et al. (2023): *ERA5 monthly averaged data on single levels from 1940 to present.*
+  Copernicus Climate Change Service (C3S) Climate Data Store. DOI: 10.24381/cds.f17050d7
+- NOAA Climate Prediction Center: *Oceanic Niño Index (ONI).*
+  https://origin.cpc.ncep.noaa.gov/products/analysis_monitoring/ensostuff/ONI_v5.php
 - 3D rendering: [forge3d](https://github.com/milos-agathon/forge3d) (Apache-2.0 / MIT).
 
 ## License
