@@ -3,4 +3,8 @@ pandas>=2.1
 scipy>=1.11
 matplotlib>=3.8
 requests>=2.31
+rasterio>=1.3
+Pillow>=10.0
 pytest>=8.0
+# Optional, for the GPU 3D render in analysis 3
+forge3d>=1.40

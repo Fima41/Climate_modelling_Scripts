@@ -14,3 +14,7 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# Local copy of the forge3d source (installed from pip instead)
+forge3d-main/
+forge3d-main.zip

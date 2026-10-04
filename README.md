@@ -12,8 +12,9 @@ produces publication-style figures along with a plain-English summary.
 |---|---|---|
 | 1 | [Temperature trends](#1-temperature-trends) | NASA GISTEMP v4 |
 | 2 | [Extreme weather events: Lusaka District, Zambia](#2-extreme-weather-events--lusaka-district-zambia) | ERA5 reanalysis |
-| 3 | Drought analysis (SPI) | CHIRPS |
-| 4 | CMIP6 future projections | CMIP6 |
+| 3 | [Zambia in 3D: the shape of the plateau](#3-zambia-in-3d--the-shape-of-the-plateau) | SRTM terrain (Terrain Tiles on AWS) |
+| 4 | Drought analysis (SPI) | CHIRPS |
+| 5 | CMIP6 future projections | CMIP6 |
 
 ---
 
@@ -93,6 +94,46 @@ The rainy season runs July–June, so "2023/24" covers July 2023 to June 2024.
 
 ---
 
+## 3. Zambia in 3D — the shape of the plateau
+
+**Question:** How high is Zambia, and where does the land fall away?
+
+Elevation from public SRTM-based terrain tiles is reprojected to an equal-area grid, so every cell
+covers the same ground area. The 3D view is path-traced on the GPU with
+[forge3d](https://github.com/milos-agathon/forge3d).
+
+![Zambia terrain in 3D](outputs/zambia/figures/zambia_terrain_3d.png)
+
+### Key findings
+
+- **Zambia is a high plateau.** 82% of its 751,000 km² lies above 1,000 m, and the median height is 1,146 m.
+  Nearly three-quarters of the country (74%) sits in a single 400 m band, 1,000–1,400 m.
+- **Highest ground is 2,305 m** in the Mafinga Hills on the Malawi border. **The lowest is 329 m**, where the
+  Luangwa joins the Zambezi.
+- **Only 4% of the country lies below 600 m**, all of it in the Luangwa and middle Zambezi rift valleys.
+- **The Luangwa rift drops 827 m in about 28 km**, from the crest of the Muchinga Escarpment to the valley floor.
+- **Lusaka sits at about 1,280 m**, part of the reason the capital is cooler than its latitude suggests.
+
+Full report with tables: [Zambia terrain summary](outputs/zambia/summary.md)
+
+![Elevation bands](outputs/zambia/figures/elevation_bands.png)
+![Cross-section](outputs/zambia/figures/elevation_profile.png)
+
+### Methods
+
+| Step | Method |
+|---|---|
+| Elevation | Terrarium tiles at zoom 8 (about 600 m), mosaicked and reprojected bilinearly to a 600 m Lambert azimuthal equal-area grid |
+| Cleaning | Spikes and stripe artefacts are replaced with the local median when they depart from it by more than 4× the local median absolute deviation (1% of cells) |
+| Country area | geoBoundaries outline rasterised on the same grid. The result (751,142 km²) is within 0.2% of the official 752,618 km² |
+| 3D render | 1.2 km heightmap, 25× vertical exaggeration, 64 path-traced samples per pixel, sun from the north-west |
+| Overlays | Rivers, lakes and labels are projected onto the render with the same pinhole camera model, validated against forge3d to within about one pixel |
+
+The GPU render needs `forge3d` and a GPU with Vulkan, DirectX 12 or Metal support (an integrated Intel GPU is enough).
+Use `--no-render` to compute the statistics and charts without it.
+
+---
+
 ## Getting started
 
 ```bash
@@ -104,6 +145,8 @@ pip install -r requirements.txt
 python -m climate_analysis.temperature_trends --dataset global
 python -m climate_analysis.temperature_trends --dataset all --refresh   # all regions, latest data
 python -m climate_analysis.extreme_events --district lusaka
+python -m climate_analysis.terrain_3d --country zambia                # 3D poster, about 1 minute on a laptop GPU
+python -m climate_analysis.terrain_3d --country zambia --no-render    # statistics and charts only
 
 # Run the tests
 python -m pytest
@@ -122,7 +165,11 @@ climate_analysis/
 ├── era5.py                 # Download district-average ERA5 daily data
 ├── indices.py              # Extreme-event indices (heatwaves, dry spells, rain onset)
 ├── extreme_plots.py        # Figures for the extremes analysis
-└── extreme_events.py       # Analysis 2: extreme weather events
+├── extreme_events.py       # Analysis 2: extreme weather events
+├── terrain.py              # Download and reproject elevation, borders, rivers and lakes
+├── render3d.py             # forge3d camera, projection and path-traced rendering
+├── terrain_plots.py        # 3D poster composition and terrain charts
+└── terrain_3d.py           # Analysis 3: Zambia in 3D
 tests/                      # Unit tests on synthetic data with known answers
 outputs/<region>/           # Generated figures and summary.md
 ```
@@ -136,6 +183,13 @@ All data are free and publicly available.
 - Hersbach, H. et al. (2020): *The ERA5 global reanalysis.* Q. J. R. Meteorol. Soc., 146, 1999–2049.
   Copernicus Climate Change Service. Accessed through the [Open-Meteo](https://open-meteo.com/)
   historical weather API (CC BY 4.0).
+
+- Terrain Tiles on AWS (Registry of Open Data), Mapzen terrarium encoding, built from SRTM (NASA/USGS),
+  GMTED2010 (USGS) and ETOPO1 (NOAA). https://registry.opendata.aws/terrain-tiles/
+- Runfola, D. et al. (2020): *geoBoundaries: A global database of political administrative boundaries.*
+  PLoS ONE 15(4). https://www.geoboundaries.org (CC BY 4.0)
+- Natural Earth: free vector and raster map data. https://www.naturalearthdata.com (public domain)
+- 3D rendering: [forge3d](https://github.com/milos-agathon/forge3d) (Apache-2.0 / MIT).
 
 ## License
 
