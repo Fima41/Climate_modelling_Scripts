@@ -57,5 +57,7 @@ Normal October–March rainfall is 1,035 mm for Zambia (1,119 mm in the north, 9
 ## Figures
 
 ![elnino_seasons_3d](figures/elnino_seasons_3d.png)
+![elnino_2023_24_rainfall_3d](figures/elnino_2023_24_rainfall_3d.png)
+![elnino_2023_24_temperature_3d](figures/elnino_2023_24_temperature_3d.png)
 ![monthly_anomalies](figures/monthly_anomalies.png)
 ![southern_rainfall_record](figures/southern_rainfall_record.png)

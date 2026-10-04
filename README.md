@@ -159,6 +159,13 @@ and the anomalies are draped over the 3D terrain from analysis 3.
 
 Full report with tables: [El Niño summary](outputs/elnino/summary.md)
 
+### 2023/24 up close
+
+The strongest recent event, mapped on its own: rainfall and temperature for October 2023 to March 2024.
+
+![The 2023/24 drought](outputs/elnino/figures/elnino_2023_24_rainfall_3d.png)
+![The 2023/24 heat](outputs/elnino/figures/elnino_2023_24_temperature_3d.png)
+
 ![Month by month](outputs/elnino/figures/monthly_anomalies.png)
 ![Southern Zambia rainfall record](outputs/elnino/figures/southern_rainfall_record.png)
 

@@ -64,11 +64,26 @@ def _source(fig, text: str = "Data: NASA GISTEMP v4") -> None:
     fig.text(0.01, -0.03, text, color=INK_MUTED, fontsize=8)
 
 
-def _save(fig, path: Path) -> Path:
+def save_figure(fig, path: Path, attempts: int = 5, **kwargs) -> Path:
+    """Save and close a figure, retrying briefly if Windows has the file open
+    (image viewers and thumbnail previews can hold a just-written PNG)."""
+    import time
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    for attempt in range(attempts):
+        try:
+            fig.savefig(path, **kwargs)
+            break
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(1.0)
     plt.close(fig)
     return path
+
+
+def _save(fig, path: Path) -> Path:
+    return save_figure(fig, path, dpi=150, bbox_inches="tight")
 
 
 def anomaly_bars(series: pd.Series, smooth: pd.Series, region: str, path: Path) -> Path:

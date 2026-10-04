@@ -14,7 +14,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Polygon
 
 from . import terrain
-from .plots import GRID, INK, INK_MUTED, INK_SECONDARY, SURFACE, _save, _source, _title
+from .plots import GRID, INK, INK_MUTED, INK_SECONDARY, SURFACE, _save, _source, _title, save_figure
 
 WATER = "#3d7fb8"
 WATER_FILL = "#7fb0d9"
@@ -112,10 +112,31 @@ def map_size(width_px: int) -> tuple[int, int]:
     return width_px, int(round(height_px * (1.0 - HEADER - FOOTER)))
 
 
+@dataclass(frozen=True)
+class PosterText:
+    """Words and legend for a poster: header, three headline numbers and footer notes."""
+
+    kicker: str
+    title: str
+    subtitle: str
+    callouts: list[tuple[str, str]]
+    legend: dict
+    notes: str
+    credit: str = DATA_CREDIT
+    title_size: float = 48.0
+    subtitle_x: float = 0.285
+
+
+def elevation_legend() -> dict:
+    lo, hi = terrain.HYPSOMETRIC_STOPS[0][0], terrain.HYPSOMETRIC_STOPS[-1][0]
+    return dict(cmap=ELEVATION_CMAP, vmin=lo, vmax=hi, ticks=[500, 1000, 1500, 2000],
+                labels=["500", "1,000", "1,500", "2,000"], title="Elevation (metres above sea level)")
+
+
 def terrain_poster(image: np.ndarray, alpha: np.ndarray, project, water_lines, water_polys,
-                   labels: list[Label], stats: dict, africa: list[dict], country_geom: dict,
-                   path: Path, exaggeration: float = 25.0) -> Path:
-    """Compose the final poster: header, the 3D map, and a footer with legend and key numbers.
+                   labels: list[Label], text: PosterText, africa: list[dict], country_geom: dict,
+                   path: Path) -> Path:
+    """Compose a poster: header, the 3D map, and a footer with legend, key numbers and locator.
 
     ``project(lon, lat, on_terrain=True)`` maps geographic points to map-panel pixels;
     ``water_lines`` are (lon/lat array, width) pairs and ``water_polys`` lon/lat rings.
@@ -140,14 +161,11 @@ def terrain_poster(image: np.ndarray, alpha: np.ndarray, project, water_lines, w
     ax.set_ylim(h - 0.5, -0.5)
     ax.axis("off")
     _place_labels(ax, labels, project)
-    _header(fig)
-    _footer(fig, stats, exaggeration)
-    _legend(fig)
+    _header(fig, text)
+    _footer(fig, text)
+    _legend(fig, text.legend)
     _locator(fig, africa, country_geom)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=dpi, facecolor=SURFACE)
-    plt.close(fig)
-    return path
+    return save_figure(fig, path, dpi=dpi, facecolor=SURFACE)
 
 
 def _halo(color=SURFACE, width=2.2):
@@ -183,48 +201,46 @@ def _place_labels(ax, labels: list[Label], project) -> None:
                     path_effects=None if label.kind == "country" else _halo(), **styles[label.kind])
 
 
-def _header(fig) -> None:
-    fig.text(0.035, 0.955, " ".join("THE CENTRAL AFRICAN PLATEAU"), fontsize=10,
-             color=INK_MUTED, fontweight="bold")
-    fig.text(0.032, 0.893, "Zambia", fontsize=48, color=INK, fontweight="bold")
-    fig.text(0.285, 0.942,
-             "A high, gently rolling plateau, broken by the deep rift valleys\n"
-             "of the Luangwa and the middle Zambezi. Shaded relief, path-traced in 3D.",
-             fontsize=12.5, color=INK_SECONDARY, va="top", linespacing=1.5)
+def _header(fig, text: PosterText) -> None:
+    fig.text(0.035, 0.955, "\u2009".join(text.kicker.upper()), fontsize=10, color=INK_MUTED, fontweight="bold")
+    fig.text(0.032, 0.893, text.title, fontsize=text.title_size, color=INK, fontweight="bold")
+    fig.text(text.subtitle_x, 0.942, text.subtitle, fontsize=12.5, color=INK_SECONDARY, va="top", linespacing=1.5)
     fig.add_artist(plt.Line2D([0.035, 0.965], [0.882, 0.882], color=GRID, linewidth=0.9))
 
 
-def _footer(fig, stats: dict, exaggeration: float) -> None:
+def _footer(fig, text: PosterText) -> None:
     fig.add_artist(plt.Line2D([0.035, 0.965], [FOOTER - 0.005, FOOTER - 0.005], color=GRID, linewidth=0.9))
-    callouts = [
-        (f"{stats['share_above_1000']:.0f}%", "of the country lies more than\n1,000 m above sea level"),
-        (f"{stats['max']:,.0f} m", "highest ground, in the Mafinga\nHills on the Malawi border"),
-        (f"{stats['min']:,.0f} m", "lowest ground, where the\nLuangwa joins the Zambezi"),
-    ]
-    for i, (value, caption) in enumerate(callouts):
+    for i, (value, caption) in enumerate(text.callouts):
         x = 0.335 + i * 0.155
         fig.text(x, 0.103, value, fontsize=22, color=INK, fontweight="bold")
         fig.text(x, 0.089, caption, fontsize=9.5, color=INK_SECONDARY, va="top", linespacing=1.4)
-    fig.text(0.035, 0.030,
-             f"Vertical exaggeration {exaggeration:.0f}×  ·  Lambert azimuthal equal-area projection  ·  "
-             "Path-traced on the GPU with forge3d", fontsize=8, color=INK_MUTED)
-    fig.text(0.035, 0.014, DATA_CREDIT, fontsize=8, color=INK_MUTED)
+    fig.text(0.035, 0.030, text.notes, fontsize=8, color=INK_MUTED)
+    fig.text(0.035, 0.014, text.credit, fontsize=8, color=INK_MUTED)
 
 
-def _legend(fig) -> None:
+def _legend(fig, spec: dict) -> None:
+    """A horizontal colour bar: continuous (``vmin``/``vmax``) or stepped (``edges`` and ``colours``)."""
     cax = fig.add_axes((0.035, 0.097, 0.235, 0.014))
-    gradient = np.linspace(0, 1, 512)[None, :]
-    lo, hi = terrain.HYPSOMETRIC_STOPS[0][0], terrain.HYPSOMETRIC_STOPS[-1][0]
-    cax.imshow(gradient, aspect="auto", cmap=ELEVATION_CMAP, extent=(lo, hi, 0, 1))
-    cax.set_yticks([])
-    ticks = [500, 1000, 1500, 2000]
-    cax.set_xticks(ticks, [f"{t:,}" for t in ticks])
+    if "edges" in spec:
+        from matplotlib.colors import BoundaryNorm, ListedColormap
+
+        edges = list(spec["edges"])
+        bounds = [edges[0] - (edges[1] - edges[0])] + edges + [edges[-1] + (edges[-1] - edges[-2])]
+        mappable = plt.cm.ScalarMappable(norm=BoundaryNorm(bounds, len(spec["colours"])),
+                                         cmap=ListedColormap(spec["colours"]))
+        bar = fig.colorbar(mappable, cax=cax, orientation="horizontal", ticks=edges)
+        bar.outline.set_visible(False)
+        cax.set_xticklabels(spec["labels"])
+    else:
+        gradient = np.linspace(0, 1, 512)[None, :]
+        cax.imshow(gradient, aspect="auto", cmap=spec["cmap"], extent=(spec["vmin"], spec["vmax"], 0, 1))
+        cax.set_yticks([])
+        cax.set_xticks(spec["ticks"], spec["labels"])
     cax.tick_params(axis="x", length=3, color=INK_MUTED, labelsize=8.5, labelcolor=INK_SECONDARY)
     for spine in cax.spines.values():
         spine.set_visible(False)
     cax.grid(False)
-    cax.set_title("Elevation (metres above sea level)", fontsize=9.5, color=INK_SECONDARY,
-                  loc="left", fontweight="normal", pad=7)
+    cax.set_title(spec["title"], fontsize=9.5, color=INK_SECONDARY, loc="left", fontweight="normal", pad=7)
 
 
 def _locator(fig, africa: list[dict], country_geom: dict) -> None:

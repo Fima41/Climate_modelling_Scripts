@@ -158,13 +158,9 @@ class TerrainScene:
         return self.camera.project(self.camera.world(row, col, h))
 
 
-def render_poster(country, boundary, grid, elevation, mask, stats, data_dir, refresh, path: Path,
-                  size: int, samples: int) -> Path:
-    width, height = terrain_plots.map_size(size)
-    scene = TerrainScene(country, grid, elevation, mask, width, height)
-    rgb, alpha = scene.render(terrain.hypsometric_rgb(elevation), samples)
-    project, near_runs = scene.project, scene.near_runs
-
+def map_layers(scene: TerrainScene, data_dir: Path, refresh: bool = False, label_kinds=None):
+    """Rivers, lakes, the Africa locator and the labels to place on a poster of ``scene``."""
+    country = scene.country
     rivers = terrain.features_in_bbox(
         terrain.download_natural_earth("ne_10m_rivers_lake_centerlines", data_dir, refresh), country.bbox)
     lakes = terrain.features_in_bbox(terrain.download_natural_earth("ne_10m_lakes", data_dir, refresh),
@@ -175,14 +171,41 @@ def render_poster(country, boundary, grid, elevation, mask, stats, data_dir, ref
         geometry = feature["geometry"]
         parts = geometry["coordinates"] if geometry["type"] == "MultiLineString" else [geometry["coordinates"]]
         lines += [(run, width_pt) for part in parts if len(part) > 1
-                  for run in near_runs(np.asarray(part)[:, :2])]
+                  for run in scene.near_runs(np.asarray(part)[:, :2])]
     rings = [ring for feature in lakes for ring in terrain_plots._rings(feature["geometry"])]
-
     africa = [f for f in terrain.download_natural_earth("ne_50m_admin_0_countries", data_dir, refresh)
               if f["properties"].get("CONTINENT") == "Africa"]
-    labels = [label for label in LABELS if _within(country, label.lon, label.lat)]
-    return terrain_plots.terrain_poster(rgb, alpha, project, lines, rings, labels, stats, africa,
-                                        boundary, path, exaggeration=EXAGGERATION)
+    labels = [label for label in LABELS if _within(country, label.lon, label.lat)
+              and (label_kinds is None or label.kind in label_kinds)]
+    return lines, rings, africa, labels
+
+
+def poster_notes() -> str:
+    return (f"Vertical exaggeration {EXAGGERATION:.0f}×  ·  Lambert azimuthal equal-area projection  ·  "
+            "Path-traced on the GPU with forge3d")
+
+
+def render_poster(country, boundary, grid, elevation, mask, stats, data_dir, refresh, path: Path,
+                  size: int, samples: int) -> Path:
+    width, height = terrain_plots.map_size(size)
+    scene = TerrainScene(country, grid, elevation, mask, width, height)
+    rgb, alpha = scene.render(terrain.hypsometric_rgb(elevation), samples)
+    lines, rings, africa, labels = map_layers(scene, data_dir, refresh)
+    text = terrain_plots.PosterText(
+        kicker="The Central African Plateau",
+        title=country.name,
+        subtitle=("A high, gently rolling plateau, broken by the deep rift valleys\n"
+                  "of the Luangwa and the middle Zambezi. Shaded relief, path-traced in 3D."),
+        callouts=[
+            (f"{stats['share_above_1000']:.0f}%", "of the country lies more than\n1,000 m above sea level"),
+            (f"{stats['max']:,.0f} m", "highest ground, in the Mafinga\nHills on the Malawi border"),
+            (f"{stats['min']:,.0f} m", "lowest ground, where the\nLuangwa joins the Zambezi"),
+        ],
+        legend=terrain_plots.elevation_legend(),
+        notes=poster_notes(),
+    )
+    return terrain_plots.terrain_poster(rgb, alpha, scene.project, lines, rings, labels, text, africa,
+                                        boundary, path)
 
 
 def analyse(country_key: str, data_dir: Path, out_dir: Path, refresh: bool = False,

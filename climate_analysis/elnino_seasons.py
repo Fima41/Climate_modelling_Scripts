@@ -18,10 +18,11 @@ import numpy as np
 from scipy.ndimage import distance_transform_edt
 
 from . import era5_monthly as era5m
-from . import elnino_plots, terrain, terrain_3d
+from . import elnino_plots, terrain, terrain_3d, terrain_plots
 from .elnino_plots import season_label, signed
 
 SOUTH_OF = -13.5           # latitude splitting "northern" and "southern" Zambia
+HERO = 2023                # season mapped on its own large posters
 PANEL = (659, 460)         # pixel size of each 3D panel
 NUMBER_WORDS = {3: "Three", 4: "Four", 5: "Five", 6: "Six"}
 
@@ -89,6 +90,11 @@ def analyse(grib: Path, data_dir: Path, out_dir: Path, samples: int = 64, render
     if render:
         figures.append(render_poster(data, seasons, rain_normal, temp_normal, el_nino, table, south_rank,
                                      temp_rank, country, grid, elevation, mask, folder, samples))
+        if HERO in table:
+            k = el_nino.index(HERO)
+            figures += render_hero(HERO, data, seasons, rain_normal, temp_normal, table, south_rank, temp_rank,
+                                   normal_mm, heat_rain[k], heat_temp[k], weights, boundary, country, grid,
+                                   elevation, mask, data_dir, folder, samples)
     figures.append(elnino_plots.monthly_heatmaps(
         heat_rain, heat_temp, el_nino, np.array([table[y]["rain_mm"] - normal_mm["Zambia"] for y in el_nino]),
         np.array([table[y]["temp_Zambia"] for y in el_nino]), folder / "figures" / "monthly_anomalies.png"))
@@ -241,6 +247,79 @@ def render_poster(data, seasons, rain_normal, temp_normal, el_nino, table, south
     )
     return elnino_plots.seasons_poster(panels, columns, rows, header, folder / "figures" / "elnino_seasons_3d.png",
                                        lusaka_xy)
+
+
+def render_hero(year, data, seasons, rain_normal, temp_normal, table, south_rank, temp_rank, normal_mm,
+                months_rain, months_temp, weights, boundary, country, grid, elevation, mask, data_dir,
+                folder: Path, samples: int) -> list[Path]:
+    """Two large posters for one season: rainfall and temperature anomalies on the 3D terrain."""
+    i, n = seasons.index(year), len(seasons.years)
+    label = season_label(year)
+    rain_pct = (seasons.rain[i] / rain_normal - 1.0) * 100.0
+    temp_c = seasons.temp[i] - temp_normal
+    names = ["October", "November", "December", "January", "February", "March"]
+    dry_month, hot_month = int(np.argmin(months_rain)), int(np.argmax(months_temp))
+    above_1c = float((weights * (temp_c > 1.0)).sum() / weights.sum() * 100)
+    everywhere_warmer = bool(temp_c[weights > 0].min() > 0)
+
+    width, height = terrain_plots.map_size(3200)
+    scene = terrain_3d.TerrainScene(country, grid, elevation, mask, width, height)
+    lines, rings, africa, labels = terrain_3d.map_layers(
+        scene, data_dir, label_kinds={"capital", "city", "water", "waterpoint", "country"})
+    credit = elnino_plots.DATA_CREDIT
+    notes = (f"October–March {label} compared with the 1991–2020 normal  ·  ERA5 at 0.25° (about 28 km), "
+             f"resampled onto the terrain  ·  " + terrain_3d.poster_notes())
+    t = table[year]
+    posters = [
+        (rain_pct, "rainfall", elnino_plots.RAIN_FINE_EDGES, elnino_plots.RAIN_FINE_COLOURS,
+         terrain_plots.PosterText(
+             kicker=f"El Niño {label}  ·  the rainy season, October to March",
+             title=f"The {label} drought",
+             subtitle=(f"Rainfall compared with the 1991–2020 normal. The strong El Niño left southern\n"
+                       f"Zambia with only {100 + t['rain_south']:.0f}% of its usual rain, the driest season on record."),
+             callouts=[
+                 (signed(t["rain_south"], unit="%"),
+                  f"rainfall in southern Zambia,\nthe driest of {n} seasons"),
+                 (signed(months_rain[dry_month], 0, " mm"),
+                  f"{names[dry_month]} rainfall across Zambia,\nwhen maize fills its grain"
+                  if names[dry_month] in ("January", "February") else f"{names[dry_month]} rainfall across Zambia"),
+                 (f"{t['rain_mm']:,.0f} mm",
+                  f"fell across Zambia, against\na normal {normal_mm['Zambia']:,.0f} mm"),
+             ],
+             legend=dict(edges=elnino_plots.RAIN_FINE_EDGES, colours=elnino_plots.RAIN_FINE_COLOURS,
+                         labels=[signed(v, unit="%") for v in elnino_plots.RAIN_FINE_EDGES],
+                         title="Rainfall, % above or below normal"),
+             notes=notes, credit=credit, title_size=40, subtitle_x=0.44)),
+        (temp_c, "temperature", elnino_plots.HEAT_EDGES, elnino_plots.HEAT_COLOURS,
+         terrain_plots.PosterText(
+             kicker=f"El Niño {label}  ·  the rainy season, October to March",
+             title=f"The {label} heat",
+             subtitle=("Mean temperature compared with the 1991–2020 normal. "
+                       + ("Every part of Zambia\nwas warmer than normal"
+                          if everywhere_warmer else "Most of Zambia\nwas warmer than normal")
+                       + f", making it the hottest rainy season on record."
+                       if temp_rank[year] == 1 else f", ranked {temp_rank[year]} of {n}."),
+             callouts=[
+                 (signed(t["temp_Zambia"], 2, " °C"),
+                  f"warmer than normal across\nZambia, the hottest of {n} seasons"
+                  if temp_rank[year] == 1 else f"warmer than normal across\nZambia, ranked {temp_rank[year]} of {n}"),
+                 (signed(months_temp[hot_month], 1, " °C"),
+                  f"in {names[hot_month]}, the month furthest\nabove its normal"),
+                 (f"{above_1c:.0f}%", "of the country was more than\n1 °C warmer than normal"),
+             ],
+             legend=dict(edges=elnino_plots.HEAT_EDGES, colours=elnino_plots.HEAT_COLOURS,
+                         labels=[f"+{v:g}" for v in elnino_plots.HEAT_EDGES],
+                         title="Temperature, °C above normal"),
+             notes=notes, credit=credit, title_size=40, subtitle_x=0.44)),
+    ]
+    paths = []
+    for field, name, edges, colours, text in posters:
+        on_grid = _fill_nan(era5m.to_grid(field, data, country, grid))
+        rgb, alpha = scene.render(elnino_plots.classify(on_grid, edges, colours), samples)
+        path = folder / "figures" / f"elnino_{year}_{str(year + 1)[-2:]}_{name}_3d.png"
+        paths.append(terrain_plots.terrain_poster(rgb, alpha, scene.project, lines, rings, labels, text,
+                                                  africa, boundary, path))
+    return paths
 
 
 def main(argv: list[str] | None = None) -> None:

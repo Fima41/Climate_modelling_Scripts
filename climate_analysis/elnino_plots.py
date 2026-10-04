@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
 from . import terrain
-from .plots import BASELINE, GRID, INK, INK_MUTED, INK_SECONDARY, SURFACE, _save, _source, _title
+from .plots import BASELINE, GRID, INK, INK_MUTED, INK_SECONDARY, SURFACE, _save, _source, _title, save_figure
 from .terrain_plots import composite, _halo
 
 # Stepped classes: brown = drier, teal = wetter; blue = cooler, red = warmer.
@@ -20,6 +20,13 @@ RAIN_MM_EDGES = [-100, -60, -30, -10, 10, 30, 60, 100]
 TEMP_EDGES = [-1.25, -0.75, -0.25, 0.25, 0.75, 1.25, 1.75, 2.25]
 TEMP_COLOURS = ["#2166ac", "#67a9cf", "#d1e5f0", "#f2f1ec", "#fddbc7",
                 "#f4a582", "#d6604d", "#b2182b", "#67001f"]
+# Finer classes for the large single-season posters.
+RAIN_FINE_EDGES = [-60, -50, -40, -30, -20, -10, 10, 20, 30, 40]
+RAIN_FINE_COLOURS = ["#543005", "#7a4508", "#9e5d14", "#bf812d", "#d6a95e", "#ebd3a2", "#f2f1ec",
+                     "#c7eae5", "#89d0c5", "#3f9e93", "#01665e"]
+HEAT_EDGES = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25]
+HEAT_COLOURS = ["#fff1c9", "#fed98e", "#fdb863", "#fc9a4e", "#f46d43", "#e04530", "#c22a2a",
+                "#99121f", "#67001f"]
 EL_NINO_COLOUR = "#a6611a"
 DATA_CREDIT = ("Data: ERA5 monthly means (Copernicus C3S / ECMWF), 0.25° · Oceanic Niño Index: NOAA CPC · "
                "Terrain: Terrain Tiles on AWS (SRTM) · Boundaries: geoBoundaries")
@@ -111,10 +118,7 @@ def seasons_poster(panels: dict, columns: list[dict], rows: list[dict], header: 
 
     fig.text(*at(80, height_px - 75), header["notes"], fontsize=8.5, color=INK_MUTED)
     fig.text(*at(80, height_px - 45), DATA_CREDIT, fontsize=8.5, color=INK_MUTED)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=dpi, facecolor=SURFACE)
-    plt.close(fig)
-    return path
+    return save_figure(fig, path, dpi=dpi, facecolor=SURFACE)
 
 
 # ---------------------------------------------------------------- charts
